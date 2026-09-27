@@ -164,7 +164,10 @@ from gradio_client import Client, handle_file
 
 client = Client("http://127.0.0.1:7860/")
 summary, documents, line_items, issues, data, files = client.predict(
-    files=[handle_file("invoice.pdf")], model="google/gemma-4-31B-it", api_key="", base_url="",
+    files=[handle_file("invoice.pdf")],
+    model="google/gemma-4-31B-it",
+    api_key="",
+    base_url="",
     api_name="/extract",
 )
 ```
