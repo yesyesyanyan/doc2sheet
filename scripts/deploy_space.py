@@ -32,16 +32,34 @@ def stage(target: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--space", required=True, help="Space id, e.g. yourname/doc2sheet")
+    parser.add_argument("--space", required=True, help="Space id, e.g. yourname/doc2sheet (or just doc2sheet)")
     parser.add_argument("--private", action="store_true", help="create the Space as private")
+    parser.add_argument(
+        "--hardware",
+        help="Space hardware, e.g. zero-a10g (ZeroGPU). Free accounts may not be able to use cpu-basic for Gradio.",
+    )
     parser.add_argument("--inference-token", help="token the Space uses to call models (saved as secret HF_TOKEN)")
+    parser.add_argument(
+        "--use-login-token-for-inference",
+        action="store_true",
+        help="store the deploy token (HF_TOKEN) as the Space secret too",
+    )
     parser.add_argument("--github-url", help="link shown in the demo header (saved as a Space variable)")
     args = parser.parse_args()
 
     from huggingface_hub import HfApi
 
-    api = HfApi(token=os.getenv("HF_TOKEN") or None)
-    api.create_repo(args.space, repo_type="space", space_sdk="gradio", private=args.private, exist_ok=True)
+    token = (os.getenv("HF_TOKEN") or "").strip() or None
+    api = HfApi(token=token)
+    username = api.whoami()["name"]
+    print(f"Logged in to Hugging Face as {username}")
+    if "/" not in args.space:
+        args.space = f"{username}/{args.space}"
+    extra = {"space_hardware": args.hardware} if args.hardware else {}
+    try:
+        api.create_repo(args.space, repo_type="space", space_sdk="gradio", private=args.private, exist_ok=True, **extra)
+    except Exception as exc:  # show the Hub's own explanation (e.g. 402: plan required) without a traceback
+        raise SystemExit(f"Could not create the Space: {exc}") from None
 
     with tempfile.TemporaryDirectory() as tmp:
         stage(Path(tmp))
@@ -52,8 +70,10 @@ def main() -> None:
             commit_message="Deploy Doc2Sheet demo",
         )
 
-    if args.inference_token:
-        api.add_space_secret(args.space, "HF_TOKEN", args.inference_token)
+    inference_token = (args.inference_token or "").strip() or (token if args.use_login_token_for_inference else None)
+    if inference_token:
+        api.add_space_secret(args.space, "HF_TOKEN", inference_token)
+        print("Space secret HF_TOKEN set")
     if args.github_url:
         api.add_space_variable(args.space, "DOC2SHEET_GITHUB_URL", args.github_url)
 

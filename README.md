@@ -7,14 +7,15 @@ re-do the arithmetic — so a misread total gets flagged for review instead of s
 landing in your books.
 
 [![CI](https://github.com/yesyesyanyan/doc2sheet/actions/workflows/ci.yml/badge.svg)](https://github.com/yesyesyanyan/doc2sheet/actions/workflows/ci.yml)
-[![Open in Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Live%20demo-Hugging%20Face%20Space-yellow)](https://huggingface.co/spaces/yesyesyanyan/doc2sheet)
+[![Showcase](https://img.shields.io/badge/%F0%9F%A4%97%20Showcase-Hugging%20Face%20Space-yellow)](https://huggingface.co/spaces/yesyanyan/doc2sheet)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**▶ Try it:** [huggingface.co/spaces/yesyesyanyan/doc2sheet](https://huggingface.co/spaces/yesyesyanyan/doc2sheet) — click
-*“Try the sample documents”*, no upload needed.
+**▶ See it in action:** [huggingface.co/spaces/yesyanyan/doc2sheet](https://huggingface.co/spaces/yesyanyan/doc2sheet) shows the real results on four
+sample documents, with the extracted fields, line items and what the checks flagged. To try your own files, run it
+locally (two commands, below).
 
-<!-- After deploying, record a short GIF of the demo and add it here: ![Demo](docs/demo.gif) -->
+[![Doc2Sheet showcase: a freight invoice whose printed total is wrong is flagged for review](docs/showcase.jpg)](https://huggingface.co/spaces/yesyanyan/doc2sheet)
 
 ---
 
@@ -63,9 +64,20 @@ flowchart LR
 
 Tax-inclusive pricing (common on EU receipts) is recognised and not flagged.
 
-The [`samples/`](samples) folder has four **fictional** documents covering the usual cases: a digital PDF with
-European number formatting, a phone photo of a café receipt, a scanned image-only PDF, and an invoice
-with a **deliberately wrong total** so you can watch the checks catch it.
+## Results on the sample documents
+
+The [`samples/`](samples) folder has four **fictional** documents covering the usual cases. This is a real run with
+`google/gemma-4-31B-it` through Hugging Face Inference Providers (27 Sep 2026, about 35 s per document):
+
+| Sample | What it tests | Result |
+|---|---|---|
+| `invoice_pixel_pine_eur.pdf` | digital PDF, `2 575,00 €`, `01.09.2026` dates | ✅ every field and line correct, all checks passed |
+| `invoice_harbor_vine_scanned.pdf` | image-only scan, delivery charge + GST | ✅ every field and line correct, all checks passed |
+| `receipt_blue_heron_photo.png` | phone photo, sales tax + tip, `2 x Latte $10.50` line totals | ✅ every field and line correct, all checks passed |
+| `invoice_kestrel_total_error.pdf` | a **deliberate £9.00 error** in the printed total | ⚠️ flagged: *subtotal 383.40 + tax 76.68 = 460.08, but the document total is 469.08* |
+
+The checks matter even more with weaker models. With a tiny local model (`qwen3-vl:2b` on Ollama), the receipt came back
+with a misread line price and a missing tip. It was marked **review** instead of passing silently.
 
 ## Quick start
 
@@ -96,13 +108,16 @@ python app.py        # open http://127.0.0.1:7860
 python -m doc2sheet samples/ -o results.xlsx --json results.json
 ```
 
-Example output:
+Real output (27 Sep 2026):
 
 ```
 Processing 4 file(s) with google/gemma-4-31B-it ...
-[1/4] OK      invoice_pixel_pine_eur.pdf  Pixel & Pine Design Studio SARL | EUR 3,090.00 | 4.1s
-[2/4] REVIEW  invoice_kestrel_total_error.pdf  Kestrel Logistics Ltd | GBP 469.08 | 3.8s  (1 issue(s))
-...
+[1/4] REVIEW  invoice_kestrel_total_error.pdf  Kestrel Logistics Ltd | GBP 469.08 | 20.24s  (1 issue(s))
+[2/4] OK      invoice_harbor_vine_scanned.pdf  Harbor & Vine Catering Pty Ltd | AUD 731.50 | 48.7s
+[3/4] OK      invoice_pixel_pine_eur.pdf  Pixel & Pine Design Studio SARL | EUR 3,090.00 | 42.09s
+[4/4] OK      receipt_blue_heron_photo.png  BLUE HERON COFFEE CO. | USD 34.62 | 29.13s
+
+Done: 3 ok, 1 need review, 0 failed.
 ```
 
 The exit code is `1` if any file failed, so it drops straight into scripts, cron jobs or n8n.
@@ -141,28 +156,38 @@ result = extract_document("invoice.pdf", llm)
 print(result.status, result.document.total, [i.message for i in result.issues])
 ```
 
-Or call the hosted demo as an API with [`gradio_client`](https://www.gradio.app/guides/getting-started-with-the-python-client):
+While the web UI is running it is also an API, callable with
+[`gradio_client`](https://www.gradio.app/guides/getting-started-with-the-python-client):
 
 ```python
 from gradio_client import Client, handle_file
 
-client = Client("yesyesyanyan/doc2sheet")
+client = Client("http://127.0.0.1:7860/")
 summary, documents, line_items, issues, data, files = client.predict(
     files=[handle_file("invoice.pdf")], model="google/gemma-4-31B-it", api_key="", base_url="",
     api_name="/extract",
 )
 ```
 
-## Deploy your own Space
+## Publishing a demo
+
+**Free: static showcase.** Record a run and publish it as a static Hugging Face Space (this is what the link above is):
 
 ```bash
-pip install huggingface_hub
-python scripts/deploy_space.py --space <your-hf-username>/doc2sheet --inference-token hf_xxx
+python -m doc2sheet samples -o results.xlsx --json results.json
+python scripts/build_showcase.py results.json --recorded "27 Sep 2026"
+python scripts/deploy_showcase.py --space doc2sheet          # needs HF_TOKEN with write access
 ```
 
-`--inference-token` becomes the Space secret `HF_TOKEN` (give it only the *Inference Providers* permission).
-To deploy automatically after every green CI run on `main`, add a repository **variable** `HF_SPACE` and a
-repository **secret** `HF_TOKEN` (write access) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+**Live Gradio demo.** Since mid-2026, hosting Gradio Spaces on Hugging Face requires a PRO plan. With one:
+
+```bash
+python scripts/deploy_space.py --space doc2sheet --use-login-token-for-inference
+```
+
+The token becomes the Space secret `HF_TOKEN`; `--inference-token` lets you store a separate, inference-only token
+instead. To redeploy after every green CI run on `main`, add a repository **variable** `HF_SPACE` and a repository
+**secret** `HF_TOKEN`; see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## Design notes
 
@@ -181,7 +206,7 @@ repository **secret** `HF_TOKEN` (write access) — see [`.github/workflows/ci.y
 
 ```
 doc2sheet/
-├── app.py                  # Gradio web UI (also the Hugging Face Space entry point)
+├── app.py                  # Gradio web UI (also the Gradio Space entry point)
 ├── doc2sheet/
 │   ├── loaders.py          # PDF/image → page images + text layer
 │   ├── prompts.py          # system prompt, strict JSON schema, reply parsing
@@ -193,8 +218,9 @@ doc2sheet/
 │   ├── service.py          # UI-agnostic glue & public-demo rules
 │   └── cli.py              # command line interface
 ├── samples/                # fictional test documents (+ scripts/make_samples.py)
-├── scripts/deploy_space.py # publish to Hugging Face Spaces
-├── space/README.md         # Space configuration
+├── scripts/                # deploy_space.py (Gradio Space), build/deploy_showcase.py (static page)
+├── showcase/               # static results page, generated by scripts/build_showcase.py
+├── space/README.md         # Gradio Space configuration
 └── tests/                  # pytest suite — no network or API key needed
 ```
 
