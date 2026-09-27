@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doc2sheet"
+version = "0.1.0"
+description = "Turn invoices and receipts (PDF, scans, photos) into validated spreadsheet rows with a vision LLM."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "yesyesyanyan" }]
+keywords = ["invoice", "receipt", "ocr", "llm", "document-ai", "automation", "gradio"]
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "pillow>=10.1",
+    "pypdfium2>=4.30",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+app = ["gradio>=6.0,<7", "pandas>=2.0"]
+dev = ["pytest>=8", "ruff>=0.6", "reportlab>=4.0"]
+
+[project.scripts]
+doc2sheet = "doc2sheet.cli:main"
+
+[tool.setuptools]
+packages = ["doc2sheet"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["SIM108"]  # explicit if/else reads better than long ternaries here
+
+[tool.ruff.lint.per-file-ignores]
+"app.py" = ["B008"]  # gr.Progress() as a default argument is the Gradio idiom
